@@ -1,6 +1,5 @@
-markdown:         rdiscount
-permalink:        /:title
-pygments:         true
-title:            iBagsoft's Ruby Dota
-url:              http://ibagsoft.github.io
-baseurl:          /ruby_dota
+markdown: rdiscount
+permalink: ruby_dota/:title
+pygments: true
+title: iBagsoft's Ruby Dota
+url: http://ibagsoft.github.io
