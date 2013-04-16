@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
+    <meta name="author" content="{{ site.author.name }}" />
+    <meta name="description" content="{{ site.description }}" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+    <link rel="stylesheet" href="/css/reset.css" type="text/css" />
+    <link rel="stylesheet" href="/css/default.css" type="text/css" />
+    <link rel="stylesheet" href="/css/courses_ib.css">
+    <script src="/js/jquery-1.7.1.min.js"></script>
+</head>
+<body>
+    <div id="head">
+        <div class='logo'>
+            <a href={{site.url}} title="Home">小程序员'Craft</a>
+        </div>
+    </div>
+
+    <div id="content">
+       {{ content }}
+    </div>
+
+    <div id="about">
+        <div class="about-content">
+            <div class="copyright right">
+                <p>Design by <a href="{{site.url}}/about.html" title="iBagsoft">iBagsoft</a> © 2013</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

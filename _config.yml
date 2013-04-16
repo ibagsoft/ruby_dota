@@ -1,0 +1,5 @@
+markdown:         rdiscount
+permalink:        /:title
+pygments:         true
+title:            iBagsoft's Ruby Dota
+url:							http://ibagsoft.github.io
