@@ -6,6 +6,8 @@ description: 模仿jekyll的结构，使用markdown格式的文件制作博客�
 ---
 
 
+[本文配套源码][src]
+
 my_blog是一个简易的blog生成框架。使用者不需要关心blog的原理，只需要将blog书写成markdown格式，然后将其copy到blog站点的_posts目录下即可。系统会自动:
 
 - 根据_layouts下的default.html文件当作页面布局，将所有的md文件渲染成html文件放置在_site目录下
@@ -552,3 +554,5 @@ Oh!My God!那我们需要把所有的标记全部做个对应。你当然可以�
 
 未完待续
 	
+	
+[src]: https://github.com/ibagsoft/ruby_dota/tree/gh-pages/src/my_blog_with_jekyll "src"
