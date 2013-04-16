@@ -101,7 +101,7 @@ $(document).ready(function(){
         }
     }
 
-    $.getScript('/js/prettify/prettify.js',function(){
+    $.getScript('{{site.url}}/js/prettify/prettify.js',function(){
         prettyPrint();
         menuIndex();
     });
