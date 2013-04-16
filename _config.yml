@@ -2,5 +2,5 @@ markdown:         rdiscount
 permalink:        /:title
 pygments:         true
 title:            iBagsoft's Ruby Dota
-url:							http://ibagsoft.github.io
-baseurl:					/ruby_dota
+url:              http://ibagsoft.github.io
+baseurl:          /ruby_dota
