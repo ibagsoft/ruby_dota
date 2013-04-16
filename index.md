@@ -7,8 +7,8 @@ layout: default
         {% for post in site.posts %}
         <article>
             <header>
-                <h3><a href="{{ post.url }}">{{ post.title }}</a></h3>
-                <a href="{{ post.url }}"><span>{{ post.tags }}</span></a>
+                <h3><a href="{{site.url}}{{ post.url }}">{{ post.title }}</a></h3>
+                <a href="{{site.url}}{{ post.url }}"><span>{{ post.tags }}</span></a>
             </header>
             <p>{{ post.description }}</p>
         </article>
