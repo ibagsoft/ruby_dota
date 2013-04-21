@@ -28,9 +28,11 @@
 
 ###安装ri
 最新的ruby安装包版本，无法挂载ri。可以使用以下命令,使得ri有效：
-gem install rdoc-data
-rdoc-data --install
-gem rdoc --all --overwrite
+
+	gem install rdoc-data
+	rdoc-data --install
+	gem rdoc --all --overwrite
+	
 安装完成后，使用`ri Di`测试.
 按键q可以退出ri
 
