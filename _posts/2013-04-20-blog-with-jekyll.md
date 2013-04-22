@@ -350,10 +350,366 @@ yml的格式相对于xml来说要简单的多。在blog.rb的同级目录中添�
 	puts blog.site_dir
 	puts blog.layouts_dir
 
-哎呀！好累。现在我们终于可以自定义配置项了，而且就算用户没有设置，我们也会使用默认的属性值。唯一美中不足的是，代码太长了，先不说维护起来是否容易，就Coding而言，也真是一个庞大的工程。我们是程序员，但不是打字员。
+哎呀！好累。现在我们终于可以自定义配置项了，而且就算用户没有设置，我们也会使用默认的属性值。唯一美中不足的是，代码太长了，先不说维护起来是否容易，就Coding而言，也是一个庞大的工程。
 
-那么，谁能证明？！
+我们是程序员，不是打字员! 谁能证明？！
 
 ##元编程
+
+结合send和attr_aceessor，可以让代码变得更灵活：
+
+	require "yaml"
+
+	class Blog
+		attr_accessor :posts_dir,:layouts_dir,:site_dir,:layouts_default_file,:site_index_file
+		def initialize(blog_name)
+			@blog_name = blog_name
+			@posts_dir = File.join @blog_name,'_posts'
+			@layouts_dir = File.join @blog_name,'_layouts'
+			@site_dir = File.join @blog_name,'_site'
+			@layouts_default_file = File.join @layouts_dir,'default.html'
+			@site_index_file = File.join @site_dir,'index.html'
+			get_config
+		end
+		def get_config
+			YAML.load_file('_config.yml').each do |k,v|
+				self.send "#{k}=",v
+			end
+		end
+	end
+
+	blog = Blog.new 'test_blog'
+	puts blog.site_dir
+	puts blog.layouts_dir
+
+send方法是Ruby一个很酷的特性。通过send将想调用的方法名作为一个参数，这样就可以在代码运行期间，直到最后一刻才决定调用哪个方法。这种技术称为动态派发。
+
+使用send调用'posts_dir'方法：`blog.send :posts_dir`，可以与`blog.posts_dir`取得相同的效果。但是有些过于强大了。尤其是，可以用send()调用任何方法，甚至调用私有方法：
+
+	class Blog
+	
+		private
+
+		def get_config
+			puts "load config"
+		end
+	end
+
+	blog = Blog.new
+	blog.send :get_config
+
+send方法太容易破坏对象的封装性了，所以要小心使用。
+
+“能力越大，责任越大！”。
+
+即然责任这么大，那我们的能力要是再大一点，大家不会介意噢？！
+
+### define_method
+
+如前如述，`class Blog`相当于定义了一个名为Blog的Class实例对象。遵循“先向右一步，再向上查找”的原则，Blog的可用方法应该来自于在Blog.class和Class.ancestors([Class, Module, Object, Kernel, BasicObject])中定义的instance_methods。现在让我们来认识`define_method`这个在Module中定义的私有实例方法(`Module.private_instance_methods.grep /define_method/`)。利用Module的define_method()方法，只需要为其提供一个方法名称和一个充当方法主体的块即可：
+
+	class Blog
+		def initialize(blog_name)
+			@blog_name = blog_name
+		end
+		define_method :posts_dir= do |path|
+			@posts = path
+		end
+		define_method :posts_dir do
+			File.join @blog_name,'_posts' unless @posts
+		end
+	end
+
+	blog = Blog.new 'my_blog'
+	puts blog.posts_dir
+
+上例中，我们使用defind_method()代替def关键字定义了posts_dir属性。
+
+有了这样一个秘密武器，我们就可以延迟属性的定义时间。并且可以减少大量的代码量：
+
+	def test_my_attr
+		Blog.my_attr :site_dir,:layouts_default_file
+		blog = Blog.new 'test_blog'
+		assert_equal "test_blog/_site",blog.site_dir
+		assert_equal "test_blog/_layouts/default.html",blog.layouts_default_file
+	end
+
+如果在Blog类里面定义，那应该是这个样子：
+
+	class Blog
+		my_attr :site_dir,:layouts_default_file
+	end
+	
+想起什么了？像不像attr_accessor?那是我们自己实现的attr_accessor，我叫它my_attr。
+
+	class Blog
+		def initialize(blog_name)
+			@blog_name = blog_name
+			@attributes = {}
+		end
+		def get_path(name)
+			dir_regexp =  /_dir$/
+			file_regexp = /_file$/
+			dirs = name.split('_')
+			if dir_regexp =~ name
+				dirs.pop
+			elsif file_regexp =~ name
+				dirs.pop
+				html_file = dirs.pop
+			end
+			path = dirs.collect{|dir| "_#{dir}"}.join("/")
+			path = File.join(path,"#{html_file}.html") if html_file
+			path
+		end
+
+		def self.my_attr(*args)
+			args.each do |arg|
+				define_attr arg
+			end
+		end
+
+		def self.define_attr(name)
+			name = name.to_s if name.is_a? Symbol
+			define_method "#{name}=" do |name|
+				@attributes[name] = name
+			end
+			define_method name do
+				if @attributes[name]
+					@attributes[name]
+				else
+					File.join @blog_name,get_path(name)
+				end
+			end
+		end
+
+		my_attr :site_dir,:layouts_default_file
+	end
+	
+`self.define_attr`使用`define_method`方法定义Blog的可读写属性，如果没有为该属性赋值，Blog实例会根据规则返回默认的预设值。
+
+send适宜不知何时使用某个方法时使用；而define_method则可以需要时帮助我们定义方法。
+
+那么，什么时候需要呢？
+
+### method_missing
+
+还记得方法查找是怎样工作的么？
+
+当调用一个方法时，Ruby按照“先向右一步，再向上查找”。向右一步，是指首先它会寻找到对象的class，可通过`.class`方法获取；向上查找，是指如果在它class的instance_methods没有查找到，那么就会沿着它的祖先ancestors一直向上查找，直到找到这个方法为止。
+
+但是，如果还是找不到呢？
+
+那Ruby就会承认它的失败，转而将这个方法发送给method_missing方法：
+
+	class Blog
+		def method_missing(method,*args)
+			puts "You called: #{method}(#{args.join(',')})"
+		end
+	end
+
+	blog = Blog.new
+	blog.site_dir
+
+上例中，blog调用的site_dir并不存在，那么它就会转而调用在Blog中定义的method_missing方法，当然如果Blog类中没有定义，那么Ruby仍然会在Blog.class的祖先链中去查找(Module中定义了默认的method_missing方法，`Module.private_instance_methods.grep /method_missing/`)。
+
+	require "yaml"
+
+	class Blog
+		def initialize(blog_name)
+			@blog_name = blog_name
+			@attributes = {}
+			get_config
+		end
+		def get_config
+			YAML.load_file('_config.yml').each do |k,v|
+				self.send "#{k}=",File.join(@blog_name,v)
+			end
+		end
+
+		def get_path(name)
+			dir_regexp =  /_dir$/
+			file_regexp = /_file$/
+			dirs = name.split('_')
+			if dir_regexp =~ name
+				dirs.pop
+			elsif file_regexp =~ name
+				dirs.pop
+				html_file = dirs.pop
+			end
+			path = dirs.collect{|dir| "_#{dir}"}.join("/")
+			path = File.join(path,"#{html_file}.html") if html_file
+			path
+		end
+
+		def self.my_attr(*args)
+			args.each do |arg|
+				define_attr arg
+			end
+		end
+
+		def self.define_attr(name)
+			name = name.to_s if name.is_a? Symbol
+			if(name=~/=$/)
+				define_method "#{name}" do |arg|
+					@attributes[name.chop] = arg
+				end
+			else
+				define_method name do
+					@attributes[name] = File.join(@blog_name,get_path(name)) unless @attributes[name]
+					@attributes[name]
+				end
+			end
+		end
+
+		def method_missing(method,*args)
+			Blog.define_attr(method)
+			self.send method,args
+		end
+	end
+
+	blog = Blog.new 'test_blog'
+	puts blog.site_dir
+	puts blog.layouts_dir
+	
+其实并不需要define_attr那么复杂，直接设置、返回结果即可：
+
+	def method_missing(method,*args)
+		attribute = method.to_s
+		if attribute =~ /=$/
+			@attributes[attribute.chop] = File.join @blog_name,args[0]
+		else
+			@attributes[attribute] = File.join(@blog_name,get_path(attribute)) unless @attributes[attribute]
+			@attributes[attribute]
+		end
+	end
+	
+## 关注点分离
+
+###提取File_Path模块
+
+在我们考虑创建一个blog模具时，就一定会考虑那些和blog相关的属性或者行为。比如blog的site_dir属性或者blog的create行为。而有些方法需要在blog中被调用但却不属于blog的行为，这包括：create_dir、get_dir、create_file、clear_dir、is_md_file?、get_mds、md_to_html、render.将它们放置在Blog类中，会违反单一职责原则。有必要将它们从blog.rb文件中提取出来，并定义在file_path.rb文件的FilePath模块中：
+
+	require "rdiscount"
+	require "liquid"
+
+	module FilePath
+		def create_dir(dir_name)
+			path = []
+			dir_name.split('/').each do |dir|
+				path << dir
+				dir_path = path.join '/'
+				Dir.mkdir dir_path unless Dir.exists? dir_path
+			end
+		end
+
+		def get_dir(file_path)
+			arr = file_path.split '/'
+			arr.pop
+			arr.join('/')
+		end
+
+		def create_file(file_path,content)
+			dir_path = get_dir(file_path)
+			create_dir dir_path unless Dir.exists?dir_path
+			File.open(file_path, "w") do |f|
+				f.write content
+			end
+		end
+
+		def clear_dir(dir_path)
+			return unless Dir.exists? dir_path
+			files = Dir.entries(dir_path) - ['.','..']
+			if files.length > 0
+				files.each do |file|
+					path = File.join dir_path,file
+					if Dir.exists?(path)
+						clear_dir(path)
+					else
+						File.delete path
+					end
+				end
+			end
+			Dir.delete dir_path
+		end
+
+		def is_md_file?(file_name)
+			file_name =~ /\.md$/
+		end
+
+		def get_mds(files)
+			files.select do |file|
+				is_md_file? file
+			end
+		end
+
+		def md_to_html(md_content)
+			RDiscount.new(md_content).to_html
+		end
+
+		def render(layout_text,blog_text)
+			template = Liquid::Template.parse(layout_text)
+			template.render('content' => blog_text)
+		end
+	end
+	
+同时将相关的单元测试从blog_test.rb迁移到file_path_test.rb中：
+
+	require "test/unit"
+	require "./file_path"
+
+	class FilePathTest < Test::Unit::TestCase
+		include FilePath
+		def setup
+			@blog_dir = "test_blog"
+			@site_dir = File.join @blog_dir,"_site"
+			@layouts_dir = File.join @blog_dir,"_layouts"
+			@posts_dir = File.join @blog_dir,"_posts"
+			@default_layout = File.join @layouts_dir,'default.html'
+			@file_path = File.join @site_dir,"index.html"
+			@md_file = 'test.md'
+		end
+		def teardown
+			clear_dir @blog_dir
+		end
+		def test_get_dir
+			assert_equal @site_dir,get_dir(@file_path)
+		end
+		def test_create_file
+			create_file @file_path,"hello,world"
+			assert_equal "hello,world",File.open(@file_path).readlines.join
+		end
+		def test_create_dir
+			create_dir(@site_dir)
+			create_dir(@layouts_dir)
+			create_dir(@posts_dir)
+			assert Dir.exist?(@site_dir)
+			assert Dir.exist?(@layouts_dir)
+			assert Dir.exist?(@posts_dir)
+		end
+		def test_is_md_file?
+			assert !is_md_file?('text.txt')
+		end
+		def test_get_mds
+			md_file = 'c.md'
+			result = get_mds(["a.txt",'b.html',md_file])
+			assert_equal 1,result.length
+			assert_equal md_file,result[0]
+		end
+		def test_md_to_html
+			md_content = '#content'
+			html_content = "<h1>content</h1>\n"
+			assert_equal html_content,md_to_html(md_content)
+		end
+		def test_render
+			layout_content = "<p>{{content}}</p>"
+			blog_content = 'hello,world'
+			html_content = "<p>hello,world</p>"
+			result = render(layout_content,blog_content)
+			assert_equal html_content,result
+		end
+	end
+
+FilePathTest以mixin的方式应用`include FilePath`命令将FilePath中的实例方法注入到FilePathTest类中。
+
 
 [first]: http://ibagsoft.github.io/ruby_dota/blog-with-jekyll/

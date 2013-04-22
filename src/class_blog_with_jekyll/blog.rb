@@ -3,47 +3,38 @@ require "yaml"
 class Blog
 	def initialize(blog_name)
 		@blog_name = blog_name
+		@attributes = {}
 		get_config
 	end
 	def get_config
 		YAML.load_file('_config.yml').each do |k,v|
-			self.send "#{k}=",v
+			self.send "#{k}=",File.join(@blog_name,v)
 		end
 	end
-	def posts_dir=(path)
-		@posts = path
+
+	def get_path(name)
+		dir_regexp =  /_dir$/
+		file_regexp = /_file$/
+		dirs = name.split('_')
+		if dir_regexp =~ name
+			dirs.pop
+		elsif file_regexp =~ name
+			dirs.pop
+			html_file = dirs.pop
+		end
+		path = dirs.collect{|dir| "_#{dir}"}.join("/")
+		path = File.join(path,"#{html_file}.html") if html_file
+		path
 	end
-	def posts_dir
-		@posts = File.join @blog_name,'_posts' unless @posts
-		@posts
-	end
-	def layouts_dir=(path)
-		@layouts = path
-	end
-	def layouts_dir
-		@layouts = File.join @blog_name,'_layouts' unless @layouts
-		@layouts
-	end
-	def site_dir=(path)
-		@site = path
-	end
-	def site_dir
-		@site = File.join @blog_name,'_site' unless @site
-		@site
-	end
-	def layouts_default_file=(path)
-		@layouts_default_file = path
-	end
-	def layouts_default_file
-		@layouts_default_file = File.join layouts_dir,'default.html' unless @layouts_default_file
-		@layouts_default_file
-	end
-	def site_index_file=(path)
-		@site_index_file = path
-	end
-	def site_index_file
-		@site_index_file = File.join site_dir,'index.html' unless @site_index_file
-		@site_index_file
+
+	def method_missing(method,*args)
+		attribute = method.to_s
+		if attribute =~ /=$/
+			@attributes[attribute.chop] = File.join @blog_name,args[0]
+		else
+			@attributes[attribute] = File.join(@blog_name,get_path(attribute)) unless @attributes[attribute]
+			@attributes[attribute]
+		end
 	end
 end
 
