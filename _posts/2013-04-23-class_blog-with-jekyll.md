@@ -7,7 +7,7 @@ description: 元数据编程优化mini_blog
 
 
 
-> 可通过添加微信公共帐号`icodekata`，或者微博帐号`姜志辉iS`与我讨论
+> [点击查看配套源码][src]。可通过添加微信公共帐号`icodekata`，或者微博帐号`姜志辉iS`与我讨论
 
 
 书接[上文][first]。这一集我们不准备给mini_blog添加任何功能，而是换另一个角度来尝试对原有内容的重新梳理。最终的代码量不但不会增加，反而会减少。
@@ -522,7 +522,7 @@ send适宜不知何时使用某个方法时使用；而define_method则可以需
 		end
 		def get_config
 			YAML.load_file('_config.yml').each do |k,v|
-				self.send "#{k}=",File.join(@blog_name,v)
+				self.send "#{k}=",v
 			end
 		end
 
@@ -583,9 +583,7 @@ send适宜不知何时使用某个方法时使用；而define_method则可以需
 		end
 	end
 	
-## 关注点分离
-
-###提取File_Path模块
+## 抽离File_Path模块
 
 在我们考虑创建一个blog模具时，就一定会考虑那些和blog相关的属性或者行为。比如blog的site_dir属性或者blog的create行为。而有些方法需要在blog中被调用但却不属于blog的行为，这包括：create_dir、get_dir、create_file、clear_dir、is_md_file?、get_mds、md_to_html、render.将它们放置在Blog类中，会违反单一职责原则。有必要将它们从blog.rb文件中提取出来，并定义在file_path.rb文件的FilePath模块中：
 
@@ -709,7 +707,278 @@ send适宜不知何时使用某个方法时使用；而define_method则可以需
 		end
 	end
 
-FilePathTest以mixin的方式应用`include FilePath`命令将FilePath中的实例方法注入到FilePathTest类中。
+FilePathTest以mixin的方式应用`include FilePath`命令将FilePath中的实例方法注入到FilePathTest类中。运行单元测试`ruby file_path_test.rb`使其通过。
+
+## 清理现场
+
+将FilePath类从Blog中抽离出去后，Blog类应该只包含和blog相关的属性和方法。其实我们可以更进一步，即然目录和文件的路径可以自动生成，那么自然也可以自动生成创建它们的方法。让我们从Blog的两个用户故事开始吧：
+
+###　自动生成Blog框架结构
+
+还记得使用`ruby blog.rb create blog_name`创建的框架结构吗：
+
+- 自动产生_layouts、_posts工作目录(布局和博客目录，_layouts和_posts只是默认值)
+- 自动产生一个默认的default.html页面布局文件
+
+#### 自动产生布局目录
+
+添加'创建布局目录'测试场景：
+
+	def test_create_layouts_dir
+		@blog.create_layouts_dir
+		assert Dir.exist? @blog.layouts_dir
+	end
+
+在Blog类中添加create_layouts_dir方法并不难。但正如我们之前所说，即然可以自动生成layouts_dir路径，当然也可以自动生成create_layouts_dir方法。扩展Blog类的method_missing方法：
+
+	def method_missing(method,*args)
+		attribute = method.to_s
+		if attribute =~ /=$/
+			@attributes[attribute.chop] = File.join @blog_name,args[0]
+		else
+			if "create_layouts_dir" == attribute
+				create_dir get_path('layouts_dir')
+			end
+			@attributes[attribute] = get_path(attribute) unless @attributes[attribute]
+			@attributes[attribute]
+		end
+	end
+	
+测试通过。
+
+等等，这个方法只能让test_create_layouts_dir这个测试通过，其它方法怎么办？
+
+其它方法？有其它场景吗？如果有就添加那个测试场景。测试驱动的原则是无测试不代码，只写让测试通过的代码。
+
+那么有其它场景吗？有！
+
+#### 自动产生博客工作目录
+
+添加'创建博客工作目录'测试场景：
+
+	def test_create_posts_dir
+		@blog.create_posts_dir
+		assert Dir.exist? @blog.posts_dir
+	end
+	
+运行测试。不通过。看起来写死代码真的不是一个好主意。还是让它变得灵活一点吧：
+	
+	def method_missing(method,*args)
+		attribute = method.to_s
+		if attribute =~ /=$/
+			@attributes[attribute.chop] = File.join @blog_name,args[0]
+		else
+			create_dir_regexp = /^create_(.+_dir)$/
+
+			if attribute =~ create_dir_regexp
+				attribute = attribute.match(create_dir_regexp)[1]
+				@attributes[attribute] = get_path(attribute)
+				create_dir @attributes[attribute]
+			end
+			@attributes[attribute] = get_path(attribute) unless @attributes[attribute]
+			@attributes[attribute]
+		end
+	end
+
+#### 自动产生默认布局文件
+
+添加'创建默认布局文件'测试场景：
+
+	def test_create_default_layout
+		@blog.create_layouts_default_file 'test'
+		assert File.exist? @blog.layouts_default_file
+		assert_equal 'test',File.open(@blog.layouts_default_file).readlines.join
+	end
+	
+看起来我们需要为method_missing方法添加'创建文件'的支持了：
+
+	def method_missing(method,*args)
+		attribute = method.to_s
+		if attribute =~ /=$/
+			@attributes[attribute.chop] = File.join @blog_name,args[0]
+		else
+			create_dir_regexp = /^create_(.+_dir)$/
+			create_file_regexp = /^create_(.+_file)$/
+
+			if attribute =~ create_dir_regexp
+				attribute = attribute.match(create_dir_regexp)[1]
+				@attributes[attribute] = get_path(attribute)
+				create_dir @attributes[attribute]
+			end
+			if attribute =~ create_file_regexp
+				attribute = attribute.match(create_file_regexp)[1]
+				@attributes[attribute] = get_path(attribute)
+				create_file @attributes[attribute],args[0]
+			end
+
+			@attributes[attribute] = get_path(attribute) unless @attributes[attribute]
+			@attributes[attribute]
+		end
+	end
+	
+#### 获取默认的布局文件内容
+
+我们那个酷酷的界面设计师现在还指望不上。
+
+好在mini_blog也并没有被更多的人知道，我们仍然可以使用原有的设计。
+
+
+	def get_layouts_default_content(*args)
+		if args.length == 1
+			File.open(args[0]).readlines.join
+		else
+			content = []
+			content << "<html><head><meta charset='utf-8'/><title>my_blog</title></head><body>"
+			content << "<h1>My Blog</h1><div id='content'>"
+			content << "{{content}}"
+			content << "</div></body></html>"
+			content.join
+		end
+	end
+	
+单元测试同样搬移到blog_test.rb中：
+
+	def test_get_layouts_default_content
+		default_content = @blog.get_layouts_default_content
+		assert default_content.include? "{{content}}"
+	end
+	
+#### create
+
+万事俱备，只欠东风。
+
+我们只需要在Blog类的create方法中调用已经存在的方法即可：
+
+	def create
+		create_layouts_dir
+		create_posts_dir
+		create_layouts_default_file get_layouts_default_content
+	end
+
+	
+### 自动生成_site静态博客站点
+
+使用`ruby blog.rb generate blog_name`可以从指定blog程序的_posts目录中找到所有的md文件，将其转化为html文件放置在_site目录下。
+
+#### 创建blog文件
+
+mini_blog会自动将博客工作目录(默认_posts目录)中的md文件转化成html文件。其测试场景如下：
+
+	def test_create_blog
+		test_md = File.join @blog.create_posts_dir,'test.md'
+		@blog.create_file test_md,"#hello,blog"
+		@blog.create_blog 'test.md'
+		assert File.exists?(@blog.site_test_blog)
+		assert File.open(@blog.site_test_blog).readlines.join.include?("<h1>hello,blog</h1>\n")
+	end
+	
+`@blog.site_test_blog`用来表示生成的博客文件，其路径应该类似`_site/test/index.html`格式。以_blog结尾的属性会自动将最后两个字符转化为“目录/index.html”的格式(如aaa_bbb_blog会返回_aaa/bbb/index.html)。修改`get_path`方法使其支持`site_test_blog`:
+
+	def get_path(name)
+		dir_regexp =  /_dir$/
+		file_regexp = /_file$/
+		blog_regexp = /_blog$/
+		dirs = name.split('_')
+		if dir_regexp =~ name
+			dirs.pop
+		elsif file_regexp =~ name
+			dirs.pop
+			html_file = "#{dirs.pop}.html"
+		elsif blog_regexp =~ name
+			dirs.pop
+			html_file = File.join dirs.pop,"index.html"
+		end
+		path = dirs.collect{|dir| "_#{dir}"}.join("/")
+		path = File.join(path,html_file) if html_file
+		File.join(@blog_name,path)
+	end
+
+考虑为get_path添加一个单元测试。试试吧，作为课后作业。
+
+回到test_create_blog这个场景，我的实现版本：
+
+	def create_blog(md_name)
+		md_path = File.join posts_dir,md_name
+		blog_path = self.send "site_#{md_name.sub('.md','') }_blog"
+		md_text = File.open(md_path).readlines.join
+		content = render get_layouts_default_content,md_to_html(md_text)
+		create_file  blog_path,content
+	end
+
+#### 生成index.html导航信息
+
+index.html导航信息的生成在后期一定会发生改变，目前只需要能够生成简单的信息就可以了。所以我们决定不须更改原有的代码：
+
+	def index_content(md_files)
+		content = []
+		content << "<ul>"
+		md_files.each do |md_file|
+			blog_dir = md_file.sub '.md',''
+			content << "<li><a href='#{blog_dir}/index.html'>#{blog_dir}</a></li>"
+		end
+		content << "</ul>"
+		content.join
+	end
+	
+其单元测试如下：
+
+	def test_index_content
+		mds = ['a.md','b.md']
+		result = @blog.index_content(mds)
+		blog_regexp = /<a\s+href='.+?\/index.html'>/
+		arr = []
+		result.scan(blog_regexp) do |item|
+			md_reg = /<a\s+href='(.+)\/index.html'>/
+			arr << "#{item.match(md_reg)[1]}.md"
+		end
+		assert_equal [],mds - arr
+	end
+
+#### generate
+
+`generate`方法呼之欲出：
+
+	def generate
+		mds = []
+		mds = Dir.entries(posts_dir) - ['.','..'] if Dir.exists?posts_dir
+		mds.each do |md|
+			create_blog md
+		end
+		content = render get_layouts_default_content,index_content(mds)
+		create_file site_index_file,content
+	end
+
+### create or generate
+
+
+我们重写了create和generate方法。create方法帮助我们创建blog默认的框架结构；而generate方法则根据这些工作目录自动创建静态站点。在上一个版本我们使用的是判断：
+
+	if $0 == __FILE__
+		check_usage
+		method = ARGV[0]
+		blog_name = ARGV[1]
+		if method == 'create'
+			create blog_name
+		elsif method == 'generate'
+			generate blog_name
+		end
+	end
+	
+但现在，我们有了send方法：
+
+	if $0 == __FILE__
+		check_usage
+		blog = Blog.new ARGV[1]
+		blog.send ARGV[0].chomp
+	end
+
+试试看：
+
+- `ruby blog.rb create my_blog`会调用create方法自动创建my_blog工作目录
+- `ruby blog.rb generate my_blog`会调用generate方法自动生成_site站点(请确保你的_posts目录下有md博客)
+
+OK,现在又可以直接访问我们的网站了。我们为什么又说又呢？！
 
 
 [first]: http://ibagsoft.github.io/ruby_dota/blog-with-jekyll/
+[src]: https://github.com/ibagsoft/ruby_dota/tree/gh-pages/src/class_blog_with_jekyll
