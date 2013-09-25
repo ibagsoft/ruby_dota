@@ -5,6 +5,7 @@ class BlogTest < Test::Unit::TestCase
 	def setup
 		@blog_dir = "test_blog"
 		@site_dir = File.join @blog_dir,"_site"
+                @config_dir = File.join @site_dir,"_config" # test_blog/_site/_config
 		@layouts_dir = File.join @blog_dir,"_layouts"
 		@posts_dir = File.join @blog_dir,"_posts"
 		@default_layout = File.join @layouts_dir,'default.html'
@@ -25,9 +26,11 @@ class BlogTest < Test::Unit::TestCase
 		create_dir(@site_dir)
 		create_dir(@layouts_dir)
 		create_dir(@posts_dir)
+		create_dir(@config_dir)
 		assert Dir.exist?(@site_dir)
 		assert Dir.exist?(@layouts_dir)
 		assert Dir.exist?(@posts_dir)
+		assert Dir.exist?(@config_dir)
 	end
 	def test_create_dirs
 		create_dirs @blog_dir

@@ -3,12 +3,15 @@ require "rdiscount"
 require "liquid"
 
 def create_dir(dir_name)
-	path = []
-	dir_name.split('/').each do |dir|
-		path << dir
-		dir_path = path.join '/'
-		Dir.mkdir dir_path unless Dir.exists? dir_path
-	end
+    dir_path = dir_name.split('/')
+    root_path = dir_path[0..-1]
+    paths = "."
+
+    root_path.each do |dir|
+      define_path = File.join paths,dir
+      Dir.mkdir define_path unless Dir.exists? define_path
+      paths = define_path
+    end
 end
 
 def get_dir(file_path)
